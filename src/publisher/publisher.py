@@ -44,10 +44,6 @@ def publish_loop(sock: socket, socket_path: str, sender_id: int, frequency_hz: i
         # Increment the sequence number with modulo
         seq_num = (seq_num + 1) & seq_wrap
 
-        import random
-        if random.randint(0, 2) == 0:
-            seq_num += random.randint(0, 10)
-
 def open_publisher_sock(path: str) -> socket:
     sock = socket(AF_UNIX, SOCK_DGRAM, 0)
 
