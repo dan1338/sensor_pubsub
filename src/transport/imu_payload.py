@@ -23,8 +23,8 @@ IMUPayload_size = struct.calcsize(IMUPayload_format)
 # Sanity check
 assert IMUPayload_size == 48
 
-def pack_imu_payload(imu_payload: IMUPayload):
+def pack_imu_payload(imu_payload: IMUPayload) -> bytes:
     return struct.pack(IMUPayload_format, *imu_payload)
 
-def unpack_imu_payload(buffer: bytes):
+def unpack_imu_payload(buffer: bytes) -> IMUPayload:
     return IMUPayload._make(struct.unpack(IMUPayload_format, buffer))

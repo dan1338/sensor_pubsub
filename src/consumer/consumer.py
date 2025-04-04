@@ -8,7 +8,7 @@ from .remote_sensor import RemoteSensor
 
 logger = logging.getLogger(__name__)
 
-def consume_loop(sock, stall_time: float):
+def consume_loop(sock: socket, stall_time: float):
     sensor_msg = SensorMessage(IMUPayload_size)
     buf = sensor_msg.get_buffer()
 
