@@ -8,46 +8,52 @@ from .imu_generator import IMUGenerator
 
 logger = logging.getLogger(__name__)
 
-def publish_loop(sock: socket, socket_path: str, sender_id: int, frequency_hz: int):
-    # Packet sequence counter
-    seq_num = 0
-    seq_wrap = (1 << 32) - 1 # UINT32_MAX
+class Publisher:
+    def __init__(self, socket_path: str, sender_id: int, frequency_hz: int):
+        self.socket_path = socket_path
+        self.sender_id = sender_id
+        self.frequency_hz = frequency_hz
 
-    sensor_msg = SensorMessage(IMUPayload_size)
-    imu_generator = IMUGenerator(delta_time=(1.0 / frequency_hz))
+        self.sock = self._open_publisher_sock()
 
-    # The timer allows to send payloads at set interval
-    timer = IntervalTimer(frequency_hz)
-    timer.reset()
+    def _open_publisher_sock(self) -> socket:
+        return socket(AF_UNIX, SOCK_DGRAM, 0)
 
-    while True:
-        imu_payload = imu_generator.get_next()
-        logger.debug(f'generated imu payload {imu_payload}')
+    def run(self):
+        sensor_msg = SensorMessage(IMUPayload_size)
 
-        packed_payload = pack_imu_payload(imu_payload)
-        sensor_msg.pack(sender_id, seq_num, packed_payload)
-        buf = sensor_msg.get_buffer()
+        # Sequence number for keeping track of message order
+        seq_num = 0
+        seq_wrap = (1 << 32) - 1 # UINT32_MAX
 
-        # Wait for the interval timer to signal
-        timer.wait()
+        imu_generator = IMUGenerator(delta_time=(1.0 / self.frequency_hz))
+        timer = IntervalTimer(self.frequency_hz)
+        timer.reset()
 
-        if logger.getEffectiveLevel() > logging.DEBUG:
-            logger.info(f'sending message seq:{seq_num}')
-        else:
-            logger.debug(f'sending message seq:{seq_num} {buf}')
+        while True:
+            imu_payload = imu_generator.get_next()
+            logger.debug(f'generated imu payload {imu_payload}')
 
-        try:
-            sock.sendto(buf, socket_path)
-        except Exception as e:
-            logger.error(f'send threw an exception {e}')
+            packed_payload = pack_imu_payload(imu_payload)
+            sensor_msg.pack(self.sender_id, seq_num, packed_payload)
+            buf = sensor_msg.get_buffer()
 
-        # Increment the sequence number with modulo
-        seq_num = (seq_num + 1) & seq_wrap
+            # Wait for the interval timer to signal
+            timer.wait()
 
-def open_publisher_sock(path: str) -> socket:
-    sock = socket(AF_UNIX, SOCK_DGRAM, 0)
+            if logger.getEffectiveLevel() > logging.DEBUG:
+                logger.info(f'sending message seq:{seq_num}')
+            else:
+                logger.debug(f'sending message seq:{seq_num} {buf}')
 
-    return sock
+            try:
+                self.sock.sendto(buf, self.socket_path)
+            except Exception as e:
+                logger.error(f'send threw an exception {e}')
+                # Depending on the error, might need specific handling or breaking the loop
+
+            # Increment the sequence number with modulo
+            seq_num = (seq_num + 1) & seq_wrap
 
 def main():
     parser = argparse.ArgumentParser()
@@ -77,8 +83,8 @@ def main():
     logger.debug(f'sender_id: {args.sender_id}')
 
     try:
-        sock = open_publisher_sock(args.socket_path)
-        publish_loop(sock, args.socket_path, args.sender_id, args.frequency_hz)
+        publisher = Publisher(args.socket_path, args.sender_id, args.frequency_hz)
+        publisher.run()
     except KeyboardInterrupt:
         pass
     except Exception as e:

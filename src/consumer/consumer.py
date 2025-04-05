@@ -1,6 +1,7 @@
 import argparse
 import logging
 from socket import socket, AF_UNIX, SOCK_DGRAM
+from os import access, unlink, F_OK
 
 from ..misc import setup_logging
 from ..transport import SensorMessage, IMUPayload_size, unpack_imu_payload
@@ -8,62 +9,69 @@ from .remote_sensor import RemoteSensor
 
 logger = logging.getLogger(__name__)
 
-def consume_loop(sock: socket, stall_time: float):
-    sensor_msg = SensorMessage(IMUPayload_size)
-    buf = sensor_msg.get_buffer()
 
-    # Dictionary of all sensors connected and broadcasting their state
-    remote_sensors = dict()
+class Consumer:
+    def __init__(self, socket_path: str, timeout_s: float):
+        self.socket_path = socket_path
+        self.timeout_s = timeout_s
 
-    while True:
-        recv_size = 0
+        self.sock = self._open_consumer_sock()
+        self.sock.settimeout(self.timeout_s)
 
-        try:
-            recv_size = sock.recv_into(buf, len(buf))
-        except TimeoutError:
-            logger.debug('recv timeout')
-        except Exception as e:
-            logger.error(f'recv threw an exception {e}')
+        self.remote_sensors = dict()
 
-        # Make sure packet was received
-        if recv_size == len(buf):
-            sender_id, seq_num, packed_payload = sensor_msg.unpack()
+    def _open_consumer_sock(self) -> socket:
+        sock = socket(AF_UNIX, SOCK_DGRAM, 0)
 
-            if logger.getEffectiveLevel() > logging.DEBUG:
-                logger.info(f'message received id:{sender_id} seq:{seq_num}')
-            else:
-                logger.debug(f'message received id:{sender_id} seq:{seq_num} {buf}')
+        # Remove if socket already exists
+        if access(self.socket_path, F_OK):
+            logger.debug('socket already exists')
+            unlink(self.socket_path)
+            logger.debug('removed existing socket')
 
-            imu_payload = unpack_imu_payload(packed_payload)
-            logger.debug(f'received imu payload {imu_payload}')
+        sock.bind(self.socket_path)
+        logger.info(f'socket bound at {self.socket_path}')
 
-            # Create message queue if first message from this sender
-            if sender_id not in remote_sensors:
-                remote_sensors[sender_id] = RemoteSensor(sender_id, stall_time)
+        return sock
 
-            # Get message queue for sender
-            remote_sensor = remote_sensors[sender_id]
-            remote_sensor.put_message(seq_num, imu_payload)
+    def run(self):
+        sensor_msg = SensorMessage(IMUPayload_size)
+        buf = sensor_msg.get_buffer()
 
-        # Process imu data
-        for remote_sensor in remote_sensors.values():
-            logger.info(f'updating remote sensor {remote_sensor.id}')
-            remote_sensor.update()
+        while True:
+            recv_size = 0
 
-def open_consumer_sock(path: str) -> socket:
-    sock = socket(AF_UNIX, SOCK_DGRAM, 0)
+            try:
+                recv_size = self.sock.recv_into(buf, len(buf))
+            except TimeoutError:
+                logger.debug('recv timeout')
+            except Exception as e:
+                logger.error(f'recv threw an exception {e}')
 
-    from os import access, unlink, F_OK
-    # Remove if socket already exists
-    if access(path, F_OK):
-        logger.debug('socket already exists')
-        unlink(path)
-        logger.debug('removed existing socket')
+            # Make sure packet was received
+            if recv_size == len(buf):
+                sender_id, seq_num, packed_payload = sensor_msg.unpack()
 
-    sock.bind(path)
-    logger.info(f'socket bound at {path}')
+                if logger.getEffectiveLevel() > logging.DEBUG:
+                    logger.info(f'message received id:{sender_id} seq:{seq_num}')
+                else:
+                    logger.debug(f'message received id:{sender_id} seq:{seq_num} {buf}')
 
-    return sock
+                imu_payload = unpack_imu_payload(packed_payload)
+                logger.debug(f'received imu payload {imu_payload}')
+
+                # Create remote sensor state if first message from this sender
+                if sender_id not in self.remote_sensors:
+                    self.remote_sensors[sender_id] = RemoteSensor(sender_id, self.timeout_s)
+
+                # Put message in queue for given remote sensor
+                remote_sensor = self.remote_sensors[sender_id]
+                remote_sensor.put_message(seq_num, imu_payload)
+
+            # Process imu data for all sensors
+            for remote_sensor in self.remote_sensors.values():
+                logger.info(f'updating remote sensor {remote_sensor.id}')
+                remote_sensor.update()
 
 def main():
     parser = argparse.ArgumentParser(prog='consumer.py')
@@ -88,11 +96,8 @@ def main():
     logger.debug(f'timeout: {args.timeout_ms}ms')
 
     try:
-        sock = open_consumer_sock(args.socket_path)
-
-        timeout_s = args.timeout_ms / 1e3
-        sock.settimeout(timeout_s)
-        consume_loop(sock, timeout_s)
+        consumer = Consumer(args.socket_path, args.timeout_ms / 1e3)
+        consumer.run()
     except KeyboardInterrupt:
         pass
     except Exception as e:
