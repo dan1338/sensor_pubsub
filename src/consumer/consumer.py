@@ -6,19 +6,22 @@ from os import access, unlink, F_OK
 from ..misc import setup_logging
 from ..transport import SensorMessage, IMUPayload_size, unpack_imu_payload
 from .remote_sensor import RemoteSensor
+from ..visualization import OrientationPreview
 
 logger = logging.getLogger(__name__)
 
 
 class Consumer:
-    def __init__(self, socket_path: str, timeout_s: float):
+    def __init__(self, socket_path: str, timeout_s: float, visualize: bool = False):
         self.socket_path = socket_path
         self.timeout_s = timeout_s
+        self.visualize = visualize
 
         self.sock = self._open_consumer_sock()
         self.sock.settimeout(self.timeout_s)
 
         self.remote_sensors = dict()
+        self.orientation_previews = dict()
 
     def _open_consumer_sock(self) -> socket:
         sock = socket(AF_UNIX, SOCK_DGRAM, 0)
@@ -63,6 +66,10 @@ class Consumer:
                 # Create remote sensor state if first message from this sender
                 if sender_id not in self.remote_sensors:
                     self.remote_sensors[sender_id] = RemoteSensor(sender_id, self.timeout_s)
+                    
+                    # Create visualization if enabled
+                    if self.visualize:
+                        self.orientation_previews[sender_id] = OrientationPreview(f'Consumer {sender_id}')
 
                 # Put message in queue for given remote sensor
                 remote_sensor = self.remote_sensors[sender_id]
@@ -72,6 +79,10 @@ class Consumer:
             for remote_sensor in self.remote_sensors.values():
                 logger.info(f'updating remote sensor {remote_sensor.id}')
                 remote_sensor.update()
+                
+                # Update visualization if enabled
+                if self.visualize:
+                    self.orientation_previews[remote_sensor.id].update(remote_sensor.orientation)
 
 def main():
     parser = argparse.ArgumentParser(prog='consumer.py')
@@ -87,6 +98,12 @@ def main():
         default='INFO',
         choices=['debug', 'info', 'warning', 'error', 'critical'],
         help='set logging level (default: info)')
+    parser.add_argument('--visualize',
+        type=bool,
+        default=False,
+        const=True,
+        nargs='?',
+        help='show a 3D visualization of the orientation (default: False)')
 
     args = parser.parse_args()
 
@@ -94,9 +111,10 @@ def main():
 
     logger.debug(f'socket path: {args.socket_path}')
     logger.debug(f'timeout: {args.timeout_ms}ms')
+    logger.debug(f'visualize: {args.visualize}')
 
     try:
-        consumer = Consumer(args.socket_path, args.timeout_ms / 1e3)
+        consumer = Consumer(args.socket_path, args.timeout_ms / 1e3, args.visualize)
         consumer.run()
     except KeyboardInterrupt:
         pass
