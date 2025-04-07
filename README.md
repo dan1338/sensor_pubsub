@@ -38,8 +38,8 @@ Both accept a `--visualize` flag which will display the internal orientation of 
 
 - Video showing 2 publishers pushing updates to the consumer, with visualization enabled
 
-https://github.com/user-attachments/assets/681af654-787a-4493-a823-86ebc38104d4
+[demo_A.webm](https://github.com/user-attachments/assets/c39a6f15-567b-475d-885e-4e805e6e3222)
 
 - Video showing recovery capability of both processes.
 
-https://github.com/user-attachments/assets/0f01412f-7a02-4f54-a9c1-efbe21be22da
+[demo_recovery.webm](https://github.com/user-attachments/assets/3cf20b7a-8b47-4861-aadd-b9754473fe06)
