@@ -35,7 +35,7 @@ class MessageQueue:
         # Return if its ordered or we're flushing
         if is_ordered or not force_order:
             self._update_last_pop()
-            self.seq_num = (self.seq_num + 1) & self.seq_wrap
+            self.seq_num = (self.seq_num if force_order else seq_num) + 1 & self.seq_wrap
             return msg
 
         # Put the message back
