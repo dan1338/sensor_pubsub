@@ -18,6 +18,7 @@ Recommended python3.12+
 1. Clone this repository
 2. Run `pip install -r requirements.txt`
 3. Optionally run `pip install -r requirements-vis.txt`
+4. Using visualization on linux might require the `libxcb-cursor0` package
 
 ## Running the Application
 
