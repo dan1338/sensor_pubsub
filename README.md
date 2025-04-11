@@ -11,6 +11,10 @@ The consumer collects messages and puts them in a queue corresponding to the sen
 After each packet it attempts to update the estimated orientation of remote sensors.
 It uses a simple complementary filter which combines integrated gyroscope rates for fine movement accuracy and tilt-compensated magnetometer readings for long term stability and recovery of orientation.
 
+The coordinate system assumed is as per the below image
+
+<img src="./res/axis.png" width="400">
+ 
 ## Installation
 
 Recommended python3.12+
